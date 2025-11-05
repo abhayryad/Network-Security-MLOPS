@@ -1,7 +1,7 @@
 
 from pymongo.mongo_client import MongoClient
 
-uri = "mongodb+srv://cheerozard:punchdrunkblud@cluster0.4qmh24p.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+uri = "mongodb+srv://cheerozard:__________________________@cluster0.4qmh24p.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
 # Create a new client and connect to the server
 client = MongoClient(uri)
@@ -12,3 +12,6 @@ try:
     print("Pinged your deployment. You successfully connected to MongoDB!")
 except Exception as e:
     print(e)
+
+#This file serves no purpose other than testing the connection to MongoDB database....The file which performs it is push_data.py
+#the ________ above are for the password which I cannot share publicly

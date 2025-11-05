@@ -1,8 +1,7 @@
 python-dotenv
 pandas
 numpy
-pymongo
-pymongo[srv]==3.6
+pymongo==4.10.1
 certifi
 scikit-learn
 dill
