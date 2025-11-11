@@ -77,7 +77,7 @@ jobs:
         id: container_name
         run: echo "name=${{ env.IMAGE_NAME }}-container" >> $GITHUB_OUTPUT
       
-      # Fixed: Uses cmd shell and cmd syntax for robust variable assignment on Windows
+      # Fixed: Uses cmd shell and cmd syntax for variable assignment on Windows
       - name: Define Image Tag to Pull
         id: pull_tag
         shell: cmd
@@ -94,39 +94,37 @@ jobs:
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Pull latest image from Docker Hub
-        # Fixed: Running under default shell (PowerShell/CMD)
+        # Running under default shell (PowerShell/CMD)
         run: |
           docker pull ${{ steps.pull_tag.outputs.tag }}
 
       - name: Stop and remove old container if running
-        # *** CRITICAL FIX: Rewritten entirely for CMD to avoid shell: bash ***
-        shell: cmd
+        # *** CRITICAL FIX: Rewritten for robust PowerShell conditional logic ***
+        shell: powershell
         run: |
-          set CONTAINER_NAME=${{ steps.container_name.outputs.name }}
+          $CONTAINER_NAME = "${{ steps.container_name.outputs.name }}"
           
-          rem Check if container is running (output to NUL to prevent log noise)
-          docker ps -q -f name=%CONTAINER_NAME%
+          # Check for RUNNING container and stop it
+          $RunningContainer = docker ps -q -f "name=$CONTAINER_NAME"
+          if ($RunningContainer) {
+            Write-Host "Stopping existing container ($CONTAINER_NAME)..."
+            docker stop $CONTAINER_NAME
+          }
           
-          if not errorlevel 1 (
-            echo Stopping existing container (%CONTAINER_NAME%)...
-            docker stop %CONTAINER_NAME%
-          )
-          
-          rem Check if container exists (running or stopped)
-          docker ps -aq -f name=%CONTAINER_NAME%
-          
-          if not errorlevel 1 (
-            echo Removing existing container (%CONTAINER_NAME%)...
-            docker rm -fv %CONTAINER_NAME%
-          )
+          # Check for ANY container (running or stopped) and remove it
+          $ExistingContainer = docker ps -aq -f "name=$CONTAINER_NAME"
+          if ($ExistingContainer) {
+            Write-Host "Removing existing container ($CONTAINER_NAME)..."
+            docker rm -fv $CONTAINER_NAME
+          }
         
       - name: Run New Docker Image to serve users
-        # Fixed: Running under default shell (PowerShell/CMD). The line continuation (\) is removed.
+        # Running under default shell (PowerShell/CMD)
         run: |
           # Use a standard port 8080 mapping
           docker run -d -p 8080:8080 --name ${{ steps.container_name.outputs.name }} ${{ steps.pull_tag.outputs.tag }}
         
       - name: Clean up unused resources
-        # Fixed: Running under default shell (PowerShell/CMD)
+        # Running under default shell (PowerShell/CMD)
         run: |
           docker system prune -f
