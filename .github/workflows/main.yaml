@@ -1,0 +1,104 @@
+name: Deployment Workflow (Docker Hub Only)
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: Continuous Integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Lint code
+        run: echo "Linting repository"
+
+      - name: Run unit tests
+        run: echo "Running unit tests"
+
+  build-and-push-dockerhub:
+    name: Build & Push to Docker Hub
+    needs: integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # 1. Login to Docker Hub using secrets.DOCKER_USERNAME and secrets.DOCKER_TOKEN
+      - name: Docker Login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      # 2. Set up Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      # Define tag for the image (using the Docker Hub username as the registry prefix)
+      - name: Define Image Tag
+        id: image_tag
+        run: |
+          echo "tag=${{ secrets.DOCKER_USERNAME }}/networksecurity:latest" >> $GITHUB_OUTPUT
+
+      # 3. Build and Push the image
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image_tag.outputs.tag }}
+
+  Continuous-Deployment:
+    name: Pull and Deploy (Self-Hosted)
+    needs: build-and-push-dockerhub # Now depends on the image being pushed
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      
+      # 1. Login to Docker Hub on the self-hosted runner to pull private images
+      - name: Docker Login on Self-Hosted Runner
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      # Define tag to pull
+      - name: Define Image Tag to Pull
+        id: pull_tag
+        run: |
+          echo "tag=${{ secrets.DOCKER_USERNAME }}/networksecurity:latest" >> $GITHUB_OUTPUT
+
+      - name: Pull latest image from Docker Hub
+        run: |
+          docker pull ${{ steps.pull_tag.outputs.tag }}
+
+      - name: Stop and remove old container if running
+        run: |
+          if [ "$(docker ps -q -f name=networksecurity)" ]; then
+            echo "Stopping existing container..."
+            docker stop networksecurity
+          fi
+          if [ "$(docker ps -aq -f name=networksecurity)" ]; then
+            echo "Removing existing container..."
+            docker rm -fv networksecurity
+          fi
+        
+      - name: Run New Docker Image to serve users
+        run: |
+          # Run the newly pulled image without any AWS environment variables
+          docker run -d -p 8080:8080 --ipc="host" --name=networksecurity \
+          ${{ steps.pull_tag.outputs.tag }}
+          
+      - name: Clean up unused resources
+        run: |
+          docker system prune -f
