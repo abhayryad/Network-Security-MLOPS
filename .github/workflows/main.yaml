@@ -72,20 +72,18 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Define the container name for the running instance
+      # This step uses simple variable definition and works with the default Windows shell
       - name: Define Container Name
         id: container_name
         run: echo "name=${{ env.IMAGE_NAME }}-container" >> $GITHUB_OUTPUT
       
-      # Define tag to pull
+      # This step uses simple variable definition and works with the default Windows shell
       - name: Define Image Tag to Pull
         id: pull_tag
-        # This step uses shell: bash for the multi-line echo logic (more robust)
         run: |
           # Use the same logic as the build step to ensure we pull the correct tag
           FULL_TAG="${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
           echo "tag=$FULL_TAG" >> $GITHUB_OUTPUT
-        shell: bash # **ADDED SHELL FIX**
 
       # 1. Login to Docker Hub on the self-hosted runner to pull private/public images
       - name: Docker Login on Self-Hosted Runner
@@ -95,13 +93,13 @@ jobs:
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Pull latest image from Docker Hub
-        # Simple 'docker pull' should work fine with default PowerShell, but using bash for consistency
+        # Requires bash for robust Docker command execution
         run: |
           docker pull ${{ steps.pull_tag.outputs.tag }}
-        shell: bash # **ADDED SHELL FIX**
-
+        shell: bash
+        
       - name: Stop and remove old container if running
-        # **Crucial Fix:** This step contains the 'if [ "$(docker ps...)" ] Bash syntax
+        # CRITICAL: Requires bash due to the Bash conditional logic: 'if [ "$(docker ps...)" ]'
         run: |
           CONTAINER_NAME=${{ steps.container_name.outputs.name }}
           
@@ -113,18 +111,18 @@ jobs:
             echo "Removing existing container ($CONTAINER_NAME)..."
             docker rm -fv $CONTAINER_NAME
           fi
-        shell: bash # **ADDED SHELL FIX**
+        shell: bash
         
       - name: Run New Docker Image to serve users
-        # This step uses Bash line continuation and variable interpolation
+        # Requires bash for Docker command robustness and line continuation
         run: |
           # Use a standard port 8080 mapping
           docker run -d -p 8080:8080 --name ${{ steps.container_name.outputs.name }} \
           ${{ steps.pull_tag.outputs.tag }}
-        shell: bash # **ADDED SHELL FIX**
+        shell: bash
         
       - name: Clean up unused resources
-        # Simple 'docker system prune' should work fine, but using bash for consistency
+        # Requires bash for consistency with other Docker commands
         run: |
           docker system prune -f
-        shell: bash # **ADDED SHELL FIX**
+        shell: bash
