@@ -3,17 +3,12 @@ import sys
 
 from networksecurity.exception.exception import NetworkSecurityException 
 from networksecurity.logging.logger import logging
-
 from networksecurity.entity.artifact_entity import DataTransformationArtifact,ModelTrainerArtifact
 from networksecurity.entity.config_entity import ModelTrainerConfig
-
-
-
 from networksecurity.utils.ml_utils.model.estimator import NetworkModel
 from networksecurity.utils.main_utils.utils import save_object,load_object
 from networksecurity.utils.main_utils.utils import load_numpy_array_data,evaluate_models
 from networksecurity.utils.ml_utils.metric.classification_metric import get_classification_score
-
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import r2_score
 from sklearn.neighbors import KNeighborsClassifier
@@ -26,16 +21,12 @@ from sklearn.ensemble import (
 import mlflow
 from urllib.parse import urlparse
 
-import dagshub
-#dagshub.init(repo_owner='krishnaik06', repo_name='networksecurity', mlflow=True)
+# NOTE: The credentials below should ideally be loaded from a configuration or environment file.
+os.environ["MLFLOW_TRACKING_URI"]="https://dagshub.com/abhayryad/Network-Security-MLOPS.mlflow"
+os.environ["MLFLOW_TRACKING_USERNAME"]="abhayryad"
+os.environ["MLFLOW_TRACKING_PASSWORD"]="b31f2584637a105ae39dac8d1780fc97857f834a"
 
-os.environ["MLFLOW_TRACKING_URI"]="https://dagshub.com/krishnaik06/networksecurity.mlflow"
-os.environ["MLFLOW_TRACKING_USERNAME"]="krishnaik06"
-os.environ["MLFLOW_TRACKING_PASSWORD"]="7104284f1bb44ece21e0e2adb4e36a250ae3251f"
-
-
-
-
+# --- Start of ModelTrainer Class ---
 
 class ModelTrainer:
     def __init__(self,model_trainer_config:ModelTrainerConfig,data_transformation_artifact:DataTransformationArtifact):
@@ -43,61 +34,61 @@ class ModelTrainer:
             self.model_trainer_config=model_trainer_config
             self.data_transformation_artifact=data_transformation_artifact
         except Exception as e:
-            raise NetworkSecurityException(e,sys)
+            # FIX: Removed ',sys' to fix TypeError
+            raise NetworkSecurityException(e)
         
-    def track_mlflow(self,best_model,classificationmetric):
-        mlflow.set_registry_uri("https://dagshub.com/krishnaik06/networksecurity.mlflow")
-        tracking_url_type_store = urlparse(mlflow.get_tracking_uri()).scheme
+    def track_mlflow(self,best_model, classification_train_metric, classification_test_metric):
+        # NOTE: Remove set_registry_uri unless needed for specific MLflow registry features
+        # mlflow.set_registry_uri("https://dagshub.com/abhayryad/Network-Security-MLOPS.mlflow")
+
         with mlflow.start_run():
-            f1_score=classificationmetric.f1_score
-            precision_score=classificationmetric.precision_score
-            recall_score=classificationmetric.recall_score
-
+            # Log Training Metrics
+            mlflow.log_metric("train_f1_score", classification_train_metric.f1_score)
+            mlflow.log_metric("train_precision", classification_train_metric.precision_score)
+            mlflow.log_metric("train_recall_score", classification_train_metric.recall_score)
             
+            # Log Testing Metrics
+            mlflow.log_metric("test_f1_score", classification_test_metric.f1_score)
+            mlflow.log_metric("test_precision", classification_test_metric.precision_score)
+            mlflow.log_metric("test_recall_score", classification_test_metric.recall_score)
 
-            mlflow.log_metric("f1_score",f1_score)
-            mlflow.log_metric("precision",precision_score)
-            mlflow.log_metric("recall_score",recall_score)
-            mlflow.sklearn.log_model(best_model,"model")
-            # Model registry does not work with file store
-            if tracking_url_type_store != "file":
+            # FIX: The path handling for MLflow artifact logging was incorrect (it created 
+            # a directory named "model" inside the trained_model_file_path).
+            # We must create a dedicated directory for MLflow artifacts and save the model file there.
+            
+            # 1. Define a temporary, clean path for the MLflow artifact save
+            mlflow_artifact_dir = os.path.join(os.path.dirname(self.model_trainer_config.trained_model_file_path), "mlflow_artifacts_temp")
+            temp_model_file_path = os.path.join(mlflow_artifact_dir, "best_model.pkl")
 
-                # Register the model
-                # There are other ways to use the Model Registry, which depends on the use case,
-                # please refer to the doc for more information:
-                # https://mlflow.org/docs/latest/model-registry.html#api-workflow
-                mlflow.sklearn.log_model(best_model, "model", registered_model_name=best_model)
-            else:
-                mlflow.sklearn.log_model(best_model, "model")
+            # 2. Ensure directory exists
+            os.makedirs(mlflow_artifact_dir, exist_ok=True)
+            
+            # 3. Save the best_model using your utility
+            save_object(temp_model_file_path, obj=best_model)
+            
+            # 4. Log the saved model file as an artifact
+            mlflow.log_artifact(temp_model_file_path, artifact_path="model")
 
+            logging.info("MLflow model and metrics successfully tracked.")
 
-        
     def train_model(self,X_train,y_train,x_test,y_test):
         models = {
-                "Random Forest": RandomForestClassifier(verbose=1),
-                "Decision Tree": DecisionTreeClassifier(),
-                "Gradient Boosting": GradientBoostingClassifier(verbose=1),
-                "Logistic Regression": LogisticRegression(verbose=1),
-                "AdaBoost": AdaBoostClassifier(),
-            }
+            "Random Forest": RandomForestClassifier(verbose=1),
+            "Decision Tree": DecisionTreeClassifier(),
+            "Gradient Boosting": GradientBoostingClassifier(verbose=1),
+            "Logistic Regression": LogisticRegression(verbose=1),
+            "AdaBoost": AdaBoostClassifier(),
+        }
         params={
             "Decision Tree": {
                 'criterion':['gini', 'entropy', 'log_loss'],
-                # 'splitter':['best','random'],
-                # 'max_features':['sqrt','log2'],
             },
             "Random Forest":{
-                # 'criterion':['gini', 'entropy', 'log_loss'],
-                
-                # 'max_features':['sqrt','log2',None],
                 'n_estimators': [8,16,32,128,256]
             },
             "Gradient Boosting":{
-                # 'loss':['log_loss', 'exponential'],
                 'learning_rate':[.1,.01,.05,.001],
                 'subsample':[0.6,0.7,0.75,0.85,0.9],
-                # 'criterion':['squared_error', 'friedman_mse'],
-                # 'max_features':['auto','sqrt','log2'],
                 'n_estimators': [8,16,32,64,128,256]
             },
             "Logistic Regression":{},
@@ -105,60 +96,51 @@ class ModelTrainer:
                 'learning_rate':[.1,.01,.001],
                 'n_estimators': [8,16,32,64,128,256]
             }
-            
         }
         model_report:dict=evaluate_models(X_train=X_train,y_train=y_train,X_test=x_test,y_test=y_test,
-                                          models=models,param=params)
+                                         models=models,param=params)
         
         ## To get best model score from dict
         best_model_score = max(sorted(model_report.values()))
 
         ## To get best model name from dict
-
         best_model_name = list(model_report.keys())[
             list(model_report.values()).index(best_model_score)
         ]
         best_model = models[best_model_name]
+        
+        # Calculate Metrics
         y_train_pred=best_model.predict(X_train)
-
         classification_train_metric=get_classification_score(y_true=y_train,y_pred=y_train_pred)
         
-        ## Track the experiements with mlflow
-        self.track_mlflow(best_model,classification_train_metric)
-
-
         y_test_pred=best_model.predict(x_test)
         classification_test_metric=get_classification_score(y_true=y_test,y_pred=y_test_pred)
 
-        self.track_mlflow(best_model,classification_test_metric)
+        ## Track the experiements with mlflow (Called once with both metrics)
+        self.track_mlflow(best_model, classification_train_metric, classification_test_metric)
 
+        # Save model locally (for deployment/next stage)
         preprocessor = load_object(file_path=self.data_transformation_artifact.transformed_object_file_path)
-            
+        
         model_dir_path = os.path.dirname(self.model_trainer_config.trained_model_file_path)
         os.makedirs(model_dir_path,exist_ok=True)
 
         Network_Model=NetworkModel(preprocessor=preprocessor,model=best_model)
-        save_object(self.model_trainer_config.trained_model_file_path,obj=NetworkModel)
-        #model pusher
+        
+        # This saves the final NetworkModel object (the pipeline)
+        save_object(self.model_trainer_config.trained_model_file_path,obj=Network_Model)
+        
+        # Redundant and possibly conflicting save_object("final_model/model.pkl",best_model)
         save_object("final_model/model.pkl",best_model)
         
-
         ## Model Trainer Artifact
         model_trainer_artifact=ModelTrainerArtifact(trained_model_file_path=self.model_trainer_config.trained_model_file_path,
-                             train_metric_artifact=classification_train_metric,
-                             test_metric_artifact=classification_test_metric
-                             )
+                                 train_metric_artifact=classification_train_metric,
+                                 test_metric_artifact=classification_test_metric
+                                 )
         logging.info(f"Model trainer artifact: {model_trainer_artifact}")
         return model_trainer_artifact
-
-
-        
-
-
-       
     
-    
-        
     def initiate_model_trainer(self)->ModelTrainerArtifact:
         try:
             train_file_path = self.data_transformation_artifact.transformed_train_file_path
@@ -177,7 +159,7 @@ class ModelTrainer:
 
             model_trainer_artifact=self.train_model(x_train,y_train,x_test,y_test)
             return model_trainer_artifact
-
             
         except Exception as e:
-            raise NetworkSecurityException(e,sys)
+            # FIX: Removed ', sys' to fix TypeError
+            raise NetworkSecurityException(e)

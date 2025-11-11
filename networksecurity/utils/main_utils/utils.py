@@ -44,12 +44,19 @@ def save_numpy_array_data(file_path: str, array: np.array):
 def save_object(file_path: str, obj: object) -> None:
     try:
         logging.info("Entered the save_object method of MainUtils class")
+        
+        # Ensure directory exists before opening file (Good practice for PermissionError)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
         with open(file_path, "wb") as file_obj:
             pickle.dump(obj, file_obj)
+            
         logging.info("Exited the save_object method of MainUtils class")
+        
     except Exception as e:
-        raise NetworkSecurityException(e, sys) from e
+        # CORRECT FIX: Remove 'sys' to resolve the persistent TypeError.
+        # This assumes NetworkSecurityException.__init__ expects only one message argument.
+        raise NetworkSecurityException(str(e)) from e
     
 def load_object(file_path: str, ) -> object:
     try:
