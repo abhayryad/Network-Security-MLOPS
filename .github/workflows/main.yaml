@@ -72,18 +72,19 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # This step uses simple variable definition and works with the default Windows shell
+      # Standard output definition works with default shell
       - name: Define Container Name
         id: container_name
         run: echo "name=${{ env.IMAGE_NAME }}-container" >> $GITHUB_OUTPUT
       
-      # This step uses simple variable definition and works with the default Windows shell
+      # *** FIX APPLIED HERE: Using CMD syntax and shell: cmd ***
       - name: Define Image Tag to Pull
         id: pull_tag
+        shell: cmd # Forces the use of the Command Prompt shell
         run: |
-          # Use the same logic as the build step to ensure we pull the correct tag
-          FULL_TAG="${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
-          echo "tag=$FULL_TAG" >> $GITHUB_OUTPUT
+          rem Use the same logic as the build step to ensure we pull the correct tag
+          set FULL_TAG=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+          echo tag=%FULL_TAG% >> %GITHUB_OUTPUT%
 
       # 1. Login to Docker Hub on the self-hosted runner to pull private/public images
       - name: Docker Login on Self-Hosted Runner
