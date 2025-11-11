@@ -12,7 +12,7 @@ permissions:
 
 env:
   # Define the core name for your Docker image
-  IMAGE_NAME: python-etl-ml-project
+  IMAGE_NAME: network-security-mlops
 
 jobs:
   integration:
