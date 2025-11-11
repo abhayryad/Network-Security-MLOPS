@@ -58,7 +58,7 @@ async def train_route():
         train_pipeline.run_pipeline()
         return Response("Training is successful")
     except Exception as e:
-        raise NetworkSecurityException(e,sys)
+        raise NetworkSecurityException(e)
     
 @app.post("/predict")
 async def predict_route(request: Request,file: UploadFile = File(...)):
@@ -81,7 +81,7 @@ async def predict_route(request: Request,file: UploadFile = File(...)):
         return templates.TemplateResponse("table.html", {"request": request, "table": table_html})
         
     except Exception as e:
-            raise NetworkSecurityException(e,sys)
+            raise NetworkSecurityException(e)
 
     
 if __name__=="__main__":
