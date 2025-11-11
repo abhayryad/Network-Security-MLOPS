@@ -13,9 +13,6 @@ permissions:
 env:
   # Define the core name for your Docker image
   IMAGE_NAME: network-security-mlops
-  # The full tag uses the DOCKER_USERNAME prefix and the defined IMAGE_NAME
-  FULL_IMAGE_TAG: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest
-  CONTAINER_NAME: ${{ env.IMAGE_NAME }}-container
 
 jobs:
   integration:
@@ -25,6 +22,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # Placeholder steps - ensure you implement actual linting and testing here!
       - name: Lint code
         run: echo "Linting repository"
 
@@ -39,59 +37,94 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # 1. Login to Docker Hub using secrets.DOCKER_USERNAME and secrets.DOCKER_TOKEN
       - name: Docker Login
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
+      # 2. Set up Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Define tag for the image: DOCKER_USERNAME/IMAGE_NAME:latest
+      - name: Define Image Tag
+        id: image_tag
+        run: |
+          # The full tag uses the DOCKER_USERNAME prefix and the defined IMAGE_NAME
+          FULL_TAG="${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+          echo "tag=$FULL_TAG" >> $GITHUB_OUTPUT
+
+      # 3. Build and Push the image
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ env.FULL_IMAGE_TAG }} # Using env variable for tag consistency
+          tags: ${{ steps.image_tag.outputs.tag }}
 
   continuous-deployment:
     name: Pull and Deploy (Self-Hosted)
     needs: build-and-push-dockerhub
-    runs-on: self-hosted # This is the target environment
+    runs-on: self-hosted
     steps:
-      # 1. Direct Docker Login (More reliable than using the action on self-hosted runners)
-      - name: Docker Login (Direct Command)
-        run: echo ${{ secrets.DOCKER_TOKEN }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
-        shell: bash # CRITICAL FIX: Forces use of Bash for pipe command
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Define the container name for the running instance
+      - name: Define Container Name
+        id: container_name
+        run: echo "name=${{ env.IMAGE_NAME }}-container" >> $GITHUB_OUTPUT
+      
+      # Define tag to pull
+      - name: Define Image Tag to Pull
+        id: pull_tag
+        # This step uses shell: bash for the multi-line echo logic (more robust)
+        run: |
+          # Use the same logic as the build step to ensure we pull the correct tag
+          FULL_TAG="${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+          echo "tag=$FULL_TAG" >> $GITHUB_OUTPUT
+        shell: bash # **ADDED SHELL FIX**
+
+      # 1. Login to Docker Hub on the self-hosted runner to pull private/public images
+      - name: Docker Login on Self-Hosted Runner
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Pull latest image from Docker Hub
+        # Simple 'docker pull' should work fine with default PowerShell, but using bash for consistency
         run: |
-          # The image tag is now defined in the global environment variable FULL_IMAGE_TAG
-          docker pull ${{ env.FULL_IMAGE_TAG }}
+          docker pull ${{ steps.pull_tag.outputs.tag }}
+        shell: bash # **ADDED SHELL FIX**
 
       - name: Stop and remove old container if running
+        # **Crucial Fix:** This step contains the 'if [ "$(docker ps...)" ] Bash syntax
         run: |
-          CONTAINER_NAME=${{ env.CONTAINER_NAME }}
+          CONTAINER_NAME=${{ steps.container_name.outputs.name }}
           
-          # Stop only if running
           if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
             echo "Stopping existing container ($CONTAINER_NAME)..."
             docker stop $CONTAINER_NAME
           fi
-          # Remove only if it exists (running or stopped)
           if [ "$(docker ps -aq -f name=$CONTAINER_NAME)" ]; then
             echo "Removing existing container ($CONTAINER_NAME)..."
             docker rm -fv $CONTAINER_NAME
           fi
-        shell: bash # CRITICAL FIX: Forces use of Bash for if/then and $(...) syntax
+        shell: bash # **ADDED SHELL FIX**
         
       - name: Run New Docker Image to serve users
+        # This step uses Bash line continuation and variable interpolation
         run: |
           # Use a standard port 8080 mapping
-          docker run -d -p 8080:8080 --name ${{ env.CONTAINER_NAME }} \
-          ${{ env.FULL_IMAGE_TAG }}
+          docker run -d -p 8080:8080 --name ${{ steps.container_name.outputs.name }} \
+          ${{ steps.pull_tag.outputs.tag }}
+        shell: bash # **ADDED SHELL FIX**
         
       - name: Clean up unused resources
+        # Simple 'docker system prune' should work fine, but using bash for consistency
         run: |
           docker system prune -f
+        shell: bash # **ADDED SHELL FIX**
