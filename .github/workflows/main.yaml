@@ -94,35 +94,39 @@ jobs:
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Pull latest image from Docker Hub
-        # Fixed: Removed shell: bash to avoid the "/bin/bash: No such file" error for this simple command.
+        # Fixed: Running under default shell (PowerShell/CMD)
         run: |
           docker pull ${{ steps.pull_tag.outputs.tag }}
 
       - name: Stop and remove old container if running
-        # CRITICAL: shell: bash MUST be KEPT here for 'if [ "$(docker ps...)" ]' Bash syntax.
+        # *** CRITICAL FIX: Rewritten entirely for CMD to avoid shell: bash ***
+        shell: cmd
         run: |
-          CONTAINER_NAME=${{ steps.container_name.outputs.name }}
+          set CONTAINER_NAME=${{ steps.container_name.outputs.name }}
           
-          if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
-            echo "Stopping existing container ($CONTAINER_NAME)..."
-            docker stop $CONTAINER_NAME
-          fi
-          if [ "$(docker ps -aq -f name=$CONTAINER_NAME)" ]; then
-            echo "Removing existing container ($CONTAINER_NAME)..."
-            docker rm -fv $CONTAINER_NAME
-          fi
-        shell: bash
+          rem Check if container is running (output to NUL to prevent log noise)
+          docker ps -q -f name=%CONTAINER_NAME%
+          
+          if not errorlevel 1 (
+            echo Stopping existing container (%CONTAINER_NAME%)...
+            docker stop %CONTAINER_NAME%
+          )
+          
+          rem Check if container exists (running or stopped)
+          docker ps -aq -f name=%CONTAINER_NAME%
+          
+          if not errorlevel 1 (
+            echo Removing existing container (%CONTAINER_NAME%)...
+            docker rm -fv %CONTAINER_NAME%
+          )
         
       - name: Run New Docker Image to serve users
-        # shell: bash MUST be KEPT here for robustness/line continuation
+        # Fixed: Running under default shell (PowerShell/CMD). The line continuation (\) is removed.
         run: |
           # Use a standard port 8080 mapping
-          docker run -d -p 8080:8080 --name ${{ steps.container_name.outputs.name }} \
-          ${{ steps.pull_tag.outputs.tag }}
-        shell: bash
+          docker run -d -p 8080:8080 --name ${{ steps.container_name.outputs.name }} ${{ steps.pull_tag.outputs.tag }}
         
       - name: Clean up unused resources
-        # shell: bash MUST be KEPT here for consistency/robustness
+        # Fixed: Running under default shell (PowerShell/CMD)
         run: |
           docker system prune -f
-        shell: bash
