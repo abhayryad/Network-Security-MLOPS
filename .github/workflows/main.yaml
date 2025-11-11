@@ -1,4 +1,4 @@
-name: Deployment Workflow (Docker Hub Only)
+name: Deployment Workflow (Docker Hub & Self-Hosted CD)
 
 on:
   push:
@@ -10,14 +10,19 @@ on:
 permissions:
   contents: read
 
+env:
+  # Define the core name for your Docker image
+  IMAGE_NAME: python-etl-ml-project
+
 jobs:
   integration:
     name: Continuous Integration
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # Updated to use v4
 
+      # Placeholder steps - ensure you implement actual linting and testing here!
       - name: Lint code
         run: echo "Linting repository"
 
@@ -30,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # Updated to use v4
 
       # 1. Login to Docker Hub using secrets.DOCKER_USERNAME and secrets.DOCKER_TOKEN
       - name: Docker Login
@@ -42,12 +47,14 @@ jobs:
       # 2. Set up Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        
-      # Define tag for the image (using the Docker Hub username as the registry prefix)
+
+      # Define tag for the image: DOCKER_USERNAME/IMAGE_NAME:latest
       - name: Define Image Tag
         id: image_tag
         run: |
-          echo "tag=${{ secrets.DOCKER_USERNAME }}/networksecurity:latest" >> $GITHUB_OUTPUT
+          # The full tag uses the DOCKER_USERNAME prefix and the defined IMAGE_NAME
+          FULL_TAG="${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+          echo "tag=$FULL_TAG" >> $GITHUB_OUTPUT
 
       # 3. Build and Push the image
       - name: Build and push Docker image
@@ -57,26 +64,33 @@ jobs:
           push: true
           tags: ${{ steps.image_tag.outputs.tag }}
 
-  Continuous-Deployment:
+  continuous-deployment:
     name: Pull and Deploy (Self-Hosted)
-    needs: build-and-push-dockerhub # Now depends on the image being pushed
+    needs: build-and-push-dockerhub # Depends on the image being successfully pushed
     runs-on: self-hosted
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      # Define the container name for the running instance
+      - name: Define Container Name
+        id: container_name
+        run: echo "name=${{ env.IMAGE_NAME }}-container" >> $GITHUB_OUTPUT
       
-      # 1. Login to Docker Hub on the self-hosted runner to pull private images
+      # Define tag to pull
+      - name: Define Image Tag to Pull
+        id: pull_tag
+        run: |
+          # Use the same logic as the build step to ensure we pull the correct tag
+          FULL_TAG="${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+          echo "tag=$FULL_TAG" >> $GITHUB_OUTPUT
+
+      # 1. Login to Docker Hub on the self-hosted runner to pull private/public images
       - name: Docker Login on Self-Hosted Runner
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
-
-      # Define tag to pull
-      - name: Define Image Tag to Pull
-        id: pull_tag
-        run: |
-          echo "tag=${{ secrets.DOCKER_USERNAME }}/networksecurity:latest" >> $GITHUB_OUTPUT
 
       - name: Pull latest image from Docker Hub
         run: |
@@ -84,19 +98,21 @@ jobs:
 
       - name: Stop and remove old container if running
         run: |
-          if [ "$(docker ps -q -f name=networksecurity)" ]; then
-            echo "Stopping existing container..."
-            docker stop networksecurity
+          CONTAINER_NAME=${{ steps.container_name.outputs.name }}
+          
+          if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
+            echo "Stopping existing container ($CONTAINER_NAME)..."
+            docker stop $CONTAINER_NAME
           fi
-          if [ "$(docker ps -aq -f name=networksecurity)" ]; then
-            echo "Removing existing container..."
-            docker rm -fv networksecurity
+          if [ "$(docker ps -aq -f name=$CONTAINER_NAME)" ]; then
+            echo "Removing existing container ($CONTAINER_NAME)..."
+            docker rm -fv $CONTAINER_NAME
           fi
         
       - name: Run New Docker Image to serve users
         run: |
-          # Run the newly pulled image without any AWS environment variables
-          docker run -d -p 8080:8080 --ipc="host" --name=networksecurity \
+          # Use a standard port 8080 mapping
+          docker run -d -p 8080:8080 --name ${{ steps.container_name.outputs.name }} \
           ${{ steps.pull_tag.outputs.tag }}
           
       - name: Clean up unused resources

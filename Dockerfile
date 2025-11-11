@@ -15,5 +15,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code. This layer is only rebuilt if the app code changes.
 COPY . .
 
-# Define the command to run the application
+# Define the command to run the application (assuming app.py is the entry point)
 CMD ["python3", "app.py"]
