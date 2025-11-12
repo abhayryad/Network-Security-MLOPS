@@ -57,13 +57,13 @@ jobs:
         shell: pwsh
         run: |
           $name = "${{ env.IMAGE_NAME }}-container"
-          "name=$name" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "name=$name"
       - name: Define Image Tag to Pull
         id: pull_tag
         shell: pwsh
         run: |
           $tag = "${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
-          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "tag=$tag"
       - name: Docker Login on Self-Hosted Runner
         uses: docker/login-action@v3
         with:
