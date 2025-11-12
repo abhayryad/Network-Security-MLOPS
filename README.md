@@ -22,7 +22,7 @@ The primary goal of this project is to analyze network data, train a machine lea
 
 The project is structured around a sequential Machine Learning pipeline, where each step is encapsulated in a dedicated component.
 
-![ETL Pipeline Architecture](Images/pipeline.png)
+![ETL Pipeline Architecture](Images/Pipeline.png)
 
 ### Pipeline Components
 
