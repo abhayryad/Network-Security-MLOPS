@@ -11,7 +11,6 @@ permissions:
   contents: read
 
 env:
-  # Define the core name for your Docker image
   IMAGE_NAME: network-security-mlops
 
 jobs:
@@ -22,7 +21,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Placeholder steps - ensure you implement actual linting and testing here!
       - name: Lint code
         run: echo "Linting repository"
 
@@ -37,26 +35,21 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. Login to Docker Hub using secrets.DOCKER_USERNAME and secrets.DOCKER_TOKEN
       - name: Docker Login
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
-      # 2. Set up Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Define tag for the image: DOCKER_USERNAME/IMAGE_NAME:latest
       - name: Define Image Tag
         id: image_tag
         run: |
-          # The full tag uses the DOCKER_USERNAME prefix and the defined IMAGE_NAME
           FULL_TAG="${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
           echo "tag=$FULL_TAG" >> $GITHUB_OUTPUT
 
-      # 3. Build and Push the image
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -72,21 +65,17 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Standard output definition works with default shell
       - name: Define Container Name
         id: container_name
         run: echo "name=${{ env.IMAGE_NAME }}-container" >> $GITHUB_OUTPUT
-      
-      # Fixed: Uses cmd shell and cmd syntax for variable assignment on Windows
+
       - name: Define Image Tag to Pull
         id: pull_tag
         shell: cmd
         run: |
-          rem Use the same logic as the build step to ensure we pull the correct tag
           set FULL_TAG=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest
           echo tag=%FULL_TAG% >> %GITHUB_OUTPUT%
 
-      # 1. Login to Docker Hub on the self-hosted runner to pull private/public images
       - name: Docker Login on Self-Hosted Runner
         uses: docker/login-action@v3
         with:
@@ -94,37 +83,38 @@ jobs:
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Pull latest image from Docker Hub
-        # Running under default shell (PowerShell/CMD)
         run: |
           docker pull ${{ steps.pull_tag.outputs.tag }}
 
       - name: Stop and remove old container if running
-        # *** CRITICAL FIX: Rewritten for robust PowerShell conditional logic ***
         shell: powershell
         run: |
           $CONTAINER_NAME = "${{ steps.container_name.outputs.name }}"
-          
-          # Check for RUNNING container and stop it
+
+          # Verify container name is not empty or null
+          if ([string]::IsNullOrEmpty($CONTAINER_NAME)) {
+              Write-Error "Container name is empty or null."
+              exit 1
+          }
+
+          # Check for RUNNING container and stop it if found
           $RunningContainer = docker ps -q -f "name=$CONTAINER_NAME"
-          if ($RunningContainer) {
-            Write-Host "Stopping existing container ($CONTAINER_NAME)..."
-            docker stop $CONTAINER_NAME
+          if (![string]::IsNullOrEmpty($RunningContainer)) {
+              Write-Host "Stopping existing container ($CONTAINER_NAME)..."
+              docker stop $CONTAINER_NAME
           }
-          
-          # Check for ANY container (running or stopped) and remove it
+
+          # Check for ANY container (running or stopped) and remove it if found
           $ExistingContainer = docker ps -aq -f "name=$CONTAINER_NAME"
-          if ($ExistingContainer) {
-            Write-Host "Removing existing container ($CONTAINER_NAME)..."
-            docker rm -fv $CONTAINER_NAME
+          if (![string]::IsNullOrEmpty($ExistingContainer)) {
+              Write-Host "Removing existing container ($CONTAINER_NAME)..."
+              docker rm -fv $CONTAINER_NAME
           }
-        
+
       - name: Run New Docker Image to serve users
-        # Running under default shell (PowerShell/CMD)
         run: |
-          # Use a standard port 8080 mapping
           docker run -d -p 8080:8080 --name ${{ steps.container_name.outputs.name }} ${{ steps.pull_tag.outputs.tag }}
-        
+
       - name: Clean up unused resources
-        # Running under default shell (PowerShell/CMD)
         run: |
           docker system prune -f
