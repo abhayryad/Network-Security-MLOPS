@@ -1,6 +1,4 @@
-Here is the complete `README.md` content again, ready for you to copy and paste all at once:
 
-````markdown
 # 🛡️ Network Security ML Pipeline
 
 This repository hosts a complete Machine Learning project dedicated to **Network Security**, specifically focusing on building an ETL (Extract, Transform, Load) pipeline for data, training a predictive ML model, and deploying it for inference.
@@ -212,6 +210,3 @@ If you encounter any issues:
 -----
 
 **Note:** Replace `<YOUR_OWN_MONGO_CONNECTION_STRING>` with your actual MongoDB connection string in the docker commands.
-
-```
-```
